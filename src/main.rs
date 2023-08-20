@@ -1,6 +1,8 @@
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::path::Path;
+use chrono::NaiveDateTime;
+use regex::Regex;
 
 struct Flashcard {
     question: String,
@@ -20,53 +22,56 @@ impl FlashcardDeck {
         self.cards.push(card);
     }
 
-    fn load_from_txt(filename: &str) -> Result<Self, Box<dyn std::error::Error>> {
+     fn load_from_txt(filename: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let mut cards = Vec::new();
+        let contents = std::fs::read_to_string(filename)?;
 
-        if let Ok(contents) = std::fs::read_to_string(filename) {
-            let mut lines = contents.lines();
-            while let Some(question_line) = lines.next() {
-                if let Some(answer_line) = lines.next() {
-                    let question = question_line.trim_start_matches("Question: ").to_string();
-                    let answer = answer_line.trim_start_matches("Answer: ").to_string();
-                    cards.push(Flashcard { question, answer });
-                }
+        let re = Regex::new(r"Created: (.+)\n   Question: (.+)\n   Answer: (.+)")?;
+
+        for capture in re.captures_iter(&contents) {
+            if let (Some(created), Some(question), Some(answer)) = (
+                capture.get(1),
+                capture.get(2),
+                capture.get(3),
+            ) {
+                let created = NaiveDateTime::parse_from_str(created.as_str(), "%Y-%m-%d %H:%M:%S%.f %z")?;
+                cards.push(Flashcard {
+                    question: question.as_str().trim().to_string(),
+                    answer: answer.as_str().trim().to_string(),
+                });
             }
         }
 
         Ok(FlashcardDeck { cards })
     }
 
+    fn study(&mut self) {
+            let mut current_card = 0;
 
+            while current_card < self.cards.len() {
+                let card = &self.cards[current_card];
+                println!("Question: {}", card.question);
+                println!("Press Enter to reveal the answer...");
 
-fn study(&mut self) {
-        let mut current_card = 0;
+                let mut input = String::new();
+                io::stdin().read_line(&mut input).expect("Failed to read line");
 
-        while current_card < self.cards.len() {
-            let card = &self.cards[current_card];
-            println!("Question: {}", card.question);
-            println!("Press Enter to reveal the answer...");
+                println!("Answer: {}", card.answer);
+                println!("Did you get it right? (y/n)");
 
-            let mut input = String::new();
-            io::stdin().read_line(&mut input).expect("Failed to read line");
+                input.clear();
+                io::stdin().read_line(&mut input).expect("Failed to read line");
+                let user_response = input.trim().to_lowercase();
 
-            println!("Answer: {}", card.answer);
-            println!("Did you get it right? (y/n)");
-
-            input.clear();
-            io::stdin().read_line(&mut input).expect("Failed to read line");
-            let user_response = input.trim().to_lowercase();
-
-            if user_response == "y" || user_response == "yes" {
-                println!("Card {} removed from deck.", current_card + 1);
-                self.cards.remove(current_card);
-            } else {
-                current_card += 1;
+                if user_response == "y" || user_response == "yes" {
+                    println!("Card {} removed from deck.", current_card + 1);
+                    self.cards.remove(current_card);
+                } else {
+                    current_card += 1;
+                }
             }
+            println!("All cards have been studied!");
         }
-
-        println!("All cards have been studied!");
-    }
 
      fn save_to_txt(&self, filename: &str) -> io::Result<()> {
         let path = Path::new(filename);
